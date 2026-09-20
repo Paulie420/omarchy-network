@@ -96,19 +96,22 @@ tunnel isn't covering everything.
 
 ## Install
 
-This is a clone of a first-party Omarchy plugin, not a standalone install.
-On an Omarchy system:
-
-```sh
-omarchy plugin clone omarchy.network
+```bash
+omarchy plugin add https://github.com/Paulie420/omarchy-network.git --enable
 ```
 
-then replace the generated `~/.config/omarchy/plugins/<you>.network/Panel.qml`
-and `manifest.json` with this repo's versions (or just `git clone` this repo
-directly over that directory — it's a normal git checkout).
+This is a clone of the first-party `omarchy.network`, so adding it replaces
+the built-in widget on your bar the same way `omarchy plugin clone
+omarchy.network` would (existing keybinds/IPC calls to `omarchy.network`
+route to it automatically — see Omarchy's plugin docs). No VPN-specific
+configuration needed — the self-check works against NetworkManager's own
+connectivity-check URL, whatever that's set to.
 
-No VPN-specific configuration needed — the self-check works against
-NetworkManager's own connectivity-check URL, whatever that's set to.
+## Who made this
+
+I'm paulie420. I run a homelab, a BBS, and [techheart.life](https://techheart.life),
+and I put the builds and the debugging up on YouTube at
+**[@techheart6090](https://youtube.com/@techheart6090)**.
 
 ## License
 
