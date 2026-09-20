@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "paulie420.network",
   "name": "My Network",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "paulie420",
   "license": "MIT",
-  "description": "Omarchy's built-in Wi-Fi/network panel, patched to tell a VPN killswitch's false 'Limited internet access' apart from a real outage, and to actively re-probe instead of trusting NetworkManager's stale cache.",
+  "description": "Omarchy's built-in Wi-Fi/network panel, patched to verify a 'Limited internet access' verdict with its own unbound connectivity probe instead of just repainting NetworkManager's device-bound one -- so a VPN killswitch's false alarm shows fully normal, not a warning color, and a real outage still shows red. Also actively re-probes instead of trusting NetworkManager's stale connectivity cache.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "My Network",
-    "description": "Wi-Fi list and connection state, with PIA-killswitch-aware limited/full detection.",
+    "description": "Wi-Fi list and connection state, self-verified against a false-restricted VPN killswitch signal.",
     "category": "Network",
     "allowMultiple": false
   },

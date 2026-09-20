@@ -482,6 +482,9 @@ Panel {
   onRestrictedChanged: {
     connectionPhraseSwap.stop()
     heroMeta.opacity = 1.0
+    // Don't let a stale "ok" from a past incident silently mask the start
+    // of a new one before the next probe resolves.
+    if (!restricted) ownProbeResult = "unknown"
   }
 
   function checkConnectivity() {
@@ -511,42 +514,50 @@ Panel {
     onTriggered: root.checkConnectivity()
   }
 
-  // ---- PIA killswitch awareness ------------------------------------------
-  // PIA's split-tunnel policy routing (see paulie420.vpn) captures traffic
-  // sourced from this machine's physical interface, which blocks
-  // NetworkManager's interface-bound connectivity probe even though real
-  // internet access is fine through the tunnel (confirmed 2026-09-19: the
-  // probe gets ECONNREFUSED when forced onto wlp170s0, while the same
-  // request over the default route succeeds). Surface that as a distinct
-  // amber state instead of the same red "no internet" signal used for a
-  // real outage.
-  property bool piaConnected: false
-  readonly property color piaLikelyColor: "#e0a030"
-  readonly property bool piaLikelyCause: restricted && piaConnected
-  readonly property color restrictedColor: piaLikelyCause ? piaLikelyColor : root.bar.urgent
+  // ---- verify, don't infer -----------------------------------------------
+  // NetworkManager decides restricted/full by fetching Model.captivePortalUrl
+  // BOUND to the physical device (wlp170s0 here). A VPN killswitch's policy
+  // routing (PIA's `ip rule ... lookup piavpnrt`, see paulie420.vpn) captures
+  // traffic sourced from that device's IP -- including NetworkManager's own
+  // probe -- and refuses it, even though the exact same request with no
+  // device binding succeeds fine over the active default route (confirmed
+  // 2026-09-19/20: `curl --interface wlp170s0 ...` fails, plain `curl ...`
+  // succeeds). So "NM says restricted" is not the same question as "do I
+  // actually have internet".
+  //
+  // Rather than guess the cause (e.g. "PIA happens to be connected, so
+  // probably that's why"), just ask the real question with an unbound
+  // request to the identical URL/expected-body NM itself checks. If that
+  // confirms real connectivity, there is nothing to show -- not even a
+  // warning color, since nothing is actually wrong. Only fall back to NM's
+  // red "restricted" verdict when our own check can't disprove it.
+  property string ownProbeResult: "unknown"  // "unknown" | "ok" | "fail"
+  readonly property bool realConnectivityOk: ownProbeResult === "ok"
+  readonly property bool displayRestricted: restricted && !realConnectivityOk
 
-  function checkPia() {
-    piaProc.command = ["bash", "-lc",
-      "test -x /opt/piavpn/bin/piactl && /opt/piavpn/bin/piactl get connectionstate 2>/dev/null || true"]
-    piaProc.running = true
+  function checkRealConnectivity() {
+    realProbe.command = ["bash", "-lc",
+      "curl -fsS --max-time 4 " + Util.shellQuote(Model.captivePortalUrl) + " 2>/dev/null || true"]
+    realProbe.running = true
   }
 
   Process {
-    id: piaProc
+    id: realProbe
     running: false
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.piaConnected = String(text).trim() === "Connected"
+      onStreamFinished: root.ownProbeResult =
+        (String(text).trim() === "NetworkManager is online") ? "ok" : "fail"
     }
   }
 
   Timer {
-    id: piaPoll
+    id: realProbePoll
     interval: 5000
     repeat: true
     triggeredOnStart: true
     running: root.restricted
-    onTriggered: root.checkPia()
+    onTriggered: root.checkRealConnectivity()
   }
 
   // The share card is its own panel plugin (omarchy.wifiqr) so a replacement
@@ -999,7 +1010,7 @@ Panel {
   Timer {
     id: connectionPhraseTimer
     interval: 2800
-    running: root.opened && !root.restricted && (root.info.type === "ethernet" || (root.info.type === "wifi" && root.canDisconnect))
+    running: root.opened && !root.displayRestricted && (root.info.type === "ethernet" || (root.info.type === "wifi" && root.canDisconnect))
     repeat: true
     onTriggered: connectionPhraseSwap.restart()
   }
@@ -1056,12 +1067,9 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    active: root.restricted
-    activeColor: root.restrictedColor
+    active: root.displayRestricted
     tooltipText: root.hasCaptivePortal ? "Sign in to this network"
-      : (root.restricted
-        ? (root.piaLikelyCause ? "Limited (PIA killswitch — internet is fine through the tunnel)" : "Limited internet access")
-        : "")
+      : (root.displayRestricted ? "Limited internet access" : "")
 
     onPressed: function(b) {
       if (root.opened) root.close()
@@ -1210,7 +1218,7 @@ Panel {
           id: heroIcon
           textFormat: Text.PlainText
           text: root.icon
-          color: root.restricted ? root.restrictedColor : root.bar.foreground
+          color: root.displayRestricted ? root.bar.urgent : root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.display
           opacity: root.networkManagerAvailable ? 1.0 : 0.5
@@ -1316,7 +1324,7 @@ Panel {
             width: parent.width
             text: {
               if (root.hasCaptivePortal) return "SIGN-IN REQUIRED"
-              if (root.restricted) return root.piaLikelyCause ? "LIMITED (PIA KILLSWITCH)" : "LIMITED INTERNET ACCESS"
+              if (root.displayRestricted) return "LIMITED INTERNET ACCESS"
               if (root.info.type === "wifi") {
                 if (root.canDisconnect) return root.connectionPhrase.toUpperCase()
                 if (root.kind === "disconnected") return "NOT CONNECTED"
@@ -1327,7 +1335,7 @@ Panel {
               return ""
             }
             visible: text !== ""
-            color: root.restricted ? root.restrictedColor : Qt.darker(root.bar.foreground, 1.4)
+            color: root.displayRestricted ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
             font.bold: true
